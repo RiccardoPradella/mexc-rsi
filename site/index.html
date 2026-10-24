@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MEXC RSI Heat</title>
+<meta name="description" content="Live RSI(14) of every MEXC USDT perpetual on 1H, 4H and 1D, refreshed every 30 minutes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one column — status line, controls row, then a dense table that scrolls sideways on phones. */
+:root {
+  --bg: #f6f7f5; --panel: #ffffff; --fg: #1d2420; --muted: #66706a; --rule: #dde2de;
+  --accent: #0f7a5c; --hot1: #b7791f; --hot2: #d4581b; --hot3: #c21f2a; --cool: #2f6fb3;
+  --hot1-bg: #fbf1dc; --hot2-bg: #fde5d8; --hot3-bg: #fbdcdd;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --panel: #191e1b; --fg: #e3e8e4; --muted: #95a09a; --rule: #2a312d;
+  --accent: #3fbf93; --hot1: #e0a943; --hot2: #f08451; --hot3: #ff6b72; --cool: #74a8e0;
+  --hot1-bg: #33290f; --hot2-bg: #3a2216; --hot3-bg: #3d1a1d; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121614; --panel: #191e1b; --fg: #e3e8e4; --muted: #95a09a; --rule: #2a312d;
+  --accent: #3fbf93; --hot1: #e0a943; --hot2: #f08451; --hot3: #ff6b72; --cool: #74a8e0;
+  --hot1-bg: #33290f; --hot2-bg: #3a2216; --hot3-bg: #3d1a1d; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 var(--sans); }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.status { font: 0.85rem var(--mono); color: var(--muted); }
+.status b { color: var(--fg); font-weight: 600; }
+.status.stale b { color: var(--hot3); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.group > span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-right: 2px; }
+button.chip { font: 500 0.9rem var(--sans); color: var(--fg); background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 999px; padding: 6px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+button.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+button.chip:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip .n { font: 600 0.78rem var(--mono); color: var(--muted); }
+input[type=search] { font: 0.9rem var(--sans); color: var(--fg); background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 7px 10px; width: 11rem; max-width: 100%; }
+.summary { font-size: 0.95rem; color: var(--muted); }
+.summary b { color: var(--fg); }
+.tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 640px; }
+th, td { padding: 9px 12px; text-align: right; white-space: nowrap; }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 500;
+  border-bottom: 1px solid var(--rule); position: sticky; top: 0; background: var(--panel); }
+td { border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: 0.88rem; }
+tr:last-child td { border-bottom: 0; }
+th:first-child, td:first-child { text-align: left; }
+td.coin a { font: 600 0.95rem var(--sans); color: var(--fg); text-decoration: none; }
+td.coin a:hover { color: var(--accent); text-decoration: underline; }
+.all3 { margin-left: 6px; font: 600 0.68rem var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--hot3);
+  border: 1px solid currentColor; border-radius: 4px; padding: 1px 4px; vertical-align: 1px; }
+.rsi { display: inline-block; min-width: 3.4em; padding: 2px 8px; border-radius: 6px; font-weight: 600; text-align: right; }
+.rsi.h1 { background: var(--hot1-bg); color: var(--hot1); }
+.rsi.h2 { background: var(--hot2-bg); color: var(--hot2); }
+.rsi.h3 { background: var(--hot3-bg); color: var(--hot3); }
+.other { color: var(--muted); }
+.other.hot { color: var(--hot2); font-weight: 600; }
+.up { color: var(--accent); } .down { color: var(--hot3); }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); font-family: var(--sans); }
+footer { font-size: 0.82rem; color: var(--muted); max-width: 70ch; }
+footer a { color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) { button.chip { transition: border-color .15s, color .15s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>MEXC <span>RSI</span> Heat</h1>
+    <div class="status" id="status">Loading live data…</div>
+  </header>
+
+  <div class="controls">
+    <div class="group" role="group" aria-label="Timeframe"><span>Timeframe</span>
+      <button class="chip" data-tf="1H" aria-pressed="false">1H</button>
+      <button class="chip" data-tf="4H" aria-pressed="false">4H</button>
+      <button class="chip" data-tf="1D" aria-pressed="true">1D</button>
+    </div>
+    <div class="group" role="group" aria-label="RSI threshold"><span>RSI at least</span>
+      <button class="chip" data-th="75" aria-pressed="true">75 <i class="n" id="n75"></i></button>
+      <button class="chip" data-th="80" aria-pressed="false">80 <i class="n" id="n80"></i></button>
+      <button class="chip" data-th="90" aria-pressed="false">90 <i class="n" id="n90"></i></button>
+    </div>
+    <div class="group"><input type="search" id="q" placeholder="Find a coin" aria-label="Find a coin"></div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="tablebox">
+    <table>
+      <thead><tr>
+        <th scope="col">Coin</th><th scope="col" id="th-main">RSI 1D</th><th scope="col" id="th-o1">1H</th><th scope="col" id="th-o2">4H</th>
+        <th scope="col">Price</th><th scope="col">24h</th><th scope="col">24h volume</th><th scope="col">Funding</th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="8" class="empty">Loading live data…</td></tr></tbody>
+    </table>
+  </div>
+
+  <footer>
+    RSI(14), Wilder smoothing, on MEXC USDT perpetual candles. The candle still forming is included, so the value moves with
+    the live price and can drop back below the line before the candle closes. Data from MEXC's public API, refreshed about
+    every 30 minutes; this page reloads it every 5 minutes. "All 3" marks coins above the chosen level on 1H, 4H and 1D at once.
+    A high RSI means a strong recent run, not a signal on its own.
+  </footer>
+</div>
+<script>
+const FR = ["1H", "4H", "1D"];
+const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+let data = null, tf = store.get("rsi-tf", "1D"), th = +store.get("rsi-th", "75"), q = "";
+const $ = id => document.getElementById(id);
+const fmtP = v => !v ? "–" : v >= 100 ? v.toLocaleString("en-US", {maximumFractionDigits: 2}) : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
+const fmtV = v => !v ? "–" : v >= 1e9 ? (v / 1e9).toFixed(2) + "B" : v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(0) + "k" : String(v);
+const band = v => v >= 90 ? "h3" : v >= 80 ? "h2" : v >= 75 ? "h1" : "";
+const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.floor(m / 60) + " h " + (m % 60) + " min ago"; };
+
+function render() {
+  if (!data) return;
+  document.querySelectorAll("[data-tf]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tf === tf)));
+  document.querySelectorAll("[data-th]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.th === th)));
+  for (const t of [75, 80, 90]) $("n" + t).textContent = data.coins.filter(c => (c[tf] ?? 0) >= t).length;
+  const others = FR.filter(f => f !== tf);
+  $("th-main").textContent = "RSI " + tf; $("th-o1").textContent = others[0]; $("th-o2").textContent = others[1];
+  const list = data.coins.filter(c => (c[tf] ?? 0) >= th && (!q || c.coin.includes(q))).sort((a, b) => b[tf] - a[tf]);
+  const all3 = data.coins.filter(c => FR.every(f => (c[f] ?? 0) >= th)).length;
+  $("summary").innerHTML = `<b>${list.length}</b> of ${data.coins.length} coins have RSI ${th}+ on ${tf}` + (all3 ? ` · <b>${all3}</b> on all three timeframes` : "");
+  $("rows").innerHTML = list.length ? list.map(c => {
+    const hot3 = FR.every(f => (c[f] ?? 0) >= th);
+    const o = others.map(f => `<td class="other${(c[f] ?? 0) >= th ? " hot" : ""}">${c[f] ?? "–"}</td>`).join("");
+    const chg = c.chg24 > 0 ? "up" : c.chg24 < 0 ? "down" : "";
+    return `<tr><td class="coin"><a href="https://futures.mexc.com/exchange/${c.coin}_USDT" target="_blank" rel="noopener">${c.coin}</a>${hot3 ? '<span class="all3" title="Above the level on 1H, 4H and 1D">All 3</span>' : ""}</td>` +
+      `<td><span class="rsi ${band(c[tf])}">${c[tf]}</span></td>${o}<td>${fmtP(c.price)}</td><td class="${chg}">${c.chg24 > 0 ? "+" : ""}${c.chg24}%</td>` +
+      `<td>${fmtV(c.vol24)}</td><td>${c.funding == null ? "–" : (c.funding * 100).toFixed(3) + "%"}</td></tr>`;
+  }).join("") : `<tr><td colspan="8" class="empty">No coin has RSI ${th} or more on ${tf} right now${q ? ` matching “${q}”` : ""}.</td></tr>`;
+  status();
+}
+function status() {
+  if (!data) return;
+  const stale = Date.now() - Date.parse(data.updated) > 90 * 60000;
+  $("status").className = "status" + (stale ? " stale" : "");
+  $("status").innerHTML = `Updated <b>${ago(data.updated)}</b> · ${new Date(data.updated).toLocaleString([], {dateStyle: "medium", timeStyle: "short"})}` + (stale ? " · late, next refresh pending" : "");
+}
+async function load() {
+  try {
+    const r = await fetch("data.json?t=" + Date.now(), {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status);
+    data = await r.json(); render();
+  } catch (e) {
+    if (!data) $("rows").innerHTML = `<tr><td colspan="8" class="empty">Could not load the data (${e.message}). The page retries every 5 minutes.</td></tr>`;
+  }
+}
+document.querySelectorAll("[data-tf]").forEach(b => b.addEventListener("click", () => { tf = b.dataset.tf; store.set("rsi-tf", tf); render(); }));
+document.querySelectorAll("[data-th]").forEach(b => b.addEventListener("click", () => { th = +b.dataset.th; store.set("rsi-th", String(th)); render(); }));
+$("q").addEventListener("input", e => { q = e.target.value.trim().toUpperCase(); render(); });
+load(); setInterval(load, 5 * 60000); setInterval(status, 60000);
+</script>
+</body>
+</html>
