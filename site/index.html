@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>MEXC RSI Heat</title>
-<meta name="description" content="Live RSI(14) of every MEXC USDT perpetual on 15m, 1H, 4H, 1D and 1W — overbought and oversold — refreshed every 30 minutes.">
+<meta name="description" content="Live RSI(14) of every MEXC USDT perpetual on 15m, 1H, 4H, 1D and 1W — overbought, oversold and dips in an uptrend — refreshed every 30 minutes.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
@@ -51,6 +51,7 @@ button.chip { font: 500 0.9rem var(--sans); color: var(--fg); background: var(--
 button.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 button.chip.ob[aria-pressed="true"] { border-color: var(--hot2); color: var(--hot2); box-shadow: inset 0 0 0 1px var(--hot2); }
 button.chip.os[aria-pressed="true"] { border-color: var(--cool2); color: var(--cool2); box-shadow: inset 0 0 0 1px var(--cool2); }
+[hidden] { display: none !important; }
 button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chip .n { font: 600 0.78rem var(--mono); color: var(--muted); font-style: normal; }
 input[type=search] { font: 0.9rem var(--sans); color: var(--fg); background: var(--panel); border: 1px solid var(--rule);
@@ -62,7 +63,7 @@ input[type=search] { font: 0.9rem var(--sans); color: var(--fg); background: var
 .legend .rsi { min-width: 0; padding: 1px 6px; }
 .legend i { font-style: normal; margin: 0 4px 0 6px; }
 .tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 820px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 900px; }
 th, td { padding: 9px 10px; text-align: right; white-space: nowrap; }
 th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 500;
   border-bottom: 1px solid var(--rule); position: sticky; top: 0; background: var(--panel); }
@@ -81,6 +82,9 @@ td.coin a { font: 600 0.95rem var(--sans); color: var(--fg); text-decoration: no
 td.coin a:hover { color: var(--accent); text-decoration: underline; }
 .conf { margin-left: 6px; font: 600 0.68rem var(--mono); border: 1px solid currentColor; border-radius: 4px; padding: 1px 4px; vertical-align: 1px; }
 .conf.ob { color: var(--hot3); } .conf.os { color: var(--cool3); }
+.conf.dip { color: var(--accent); font-family: var(--sans); letter-spacing: 0.02em; }
+td.trend.on { color: var(--accent); font-weight: 600; }
+td.trend.off { color: var(--muted); }
 .rsi { display: inline-block; min-width: 3.4em; padding: 2px 7px; border-radius: 6px; text-align: right; }
 .rsi.plain { color: var(--muted); }
 .rsi.h1 { background: var(--hot1-bg); color: var(--hot1); font-weight: 600; }
@@ -108,8 +112,9 @@ footer p { margin: 0; }
     <div class="group" role="group" aria-label="Side"><span>Side</span>
       <button class="chip ob" data-dir="ob" aria-pressed="true">Overbought <i class="n" id="n-ob"></i></button>
       <button class="chip os" data-dir="os" aria-pressed="false">Oversold <i class="n" id="n-os"></i></button>
+      <button class="chip" data-dir="dip" aria-pressed="false">Dip in uptrend <i class="n" id="n-dip"></i></button>
     </div>
-    <div class="group" role="group" aria-label="Timeframe"><span>Timeframe</span>
+    <div class="group" role="group" aria-label="Timeframe" id="tf-group"><span>Timeframe</span>
       <button class="chip" data-tf="15m" aria-pressed="false">15m</button>
       <button class="chip" data-tf="1H" aria-pressed="false">1H</button>
       <button class="chip" data-tf="4H" aria-pressed="false">4H</button>
@@ -141,9 +146,10 @@ footer p { margin: 0; }
         <th scope="col" class="tf"><button data-tf="4H">4H</button></th>
         <th scope="col" class="tf"><button data-tf="1D">1D</button></th>
         <th scope="col" class="tf"><button data-tf="1W">1W</button></th>
-        <th scope="col" class="first">Price</th><th scope="col">24h</th><th scope="col">24h volume</th><th scope="col">Funding</th>
+        <th scope="col" class="first" title="Price vs the 4H EMA200. ↑ = uptrend: EMA50 above EMA200 and price above EMA200">4H trend</th>
+        <th scope="col">Price</th><th scope="col">24h</th><th scope="col">24h volume</th><th scope="col">Funding</th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="10" class="empty">Loading live data…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="11" class="empty">Loading live data…</td></tr></tbody>
     </table>
   </div>
 
@@ -154,11 +160,15 @@ footer p { margin: 0; }
     <p>Rows are coins past the chosen level on the chosen timeframe; every RSI cell is coloured, so you can see at a glance where
     the other timeframes agree. "3/5" means past the level on 3 of the 5 timeframes. Data from MEXC's public API, refreshed about
     every 30 minutes; this page reloads it every 5 minutes. An extreme RSI means a strong recent run or slide, not a signal on its own.</p>
+    <p><b>Dip in uptrend</b> = a short, sharp drop inside a rising coin: on 4H candles EMA50 is above EMA200 and the price is
+    still above EMA200 (shown as ↑ and the % above EMA200 in "4H trend"), daily RSI is between 40 and 65 (trend healthy, not
+    overheated), and 15m RSI is at or below the chosen level (30 / 25 / 20). Rows tagged "Dip ↑" in the other views meet it at 30.
+    This setup has not yet been tested on past MEXC data; treat it as a watchlist, not a buy signal.</p>
   </footer>
 </div>
 <script>
 const FR = ["15m", "1H", "4H", "1D", "1W"];
-const LV = { ob: [75, 80, 90], os: [25, 20, 10] };
+const LV = { ob: [75, 80, 90], os: [25, 20, 10], dip: [30, 25, 20] };   // dip: 15m RSI at most
 const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 let data = null, q = "";
 let tf = store.get("rsi-tf", "1D"); if (!FR.includes(tf)) tf = "1D";
@@ -170,37 +180,49 @@ const fmtV = v => !v ? "–" : v >= 1e9 ? (v / 1e9).toFixed(2) + "B" : v >= 1e6 
 const band = v => v == null ? "plain" : v >= 90 ? "h3" : v >= 80 ? "h2" : v >= 75 ? "h1" : v <= 10 ? "c3" : v <= 20 ? "c2" : v <= 25 ? "c1" : "plain";
 const past = (v, d, level) => v != null && (d === "ob" ? v >= level : v <= level);   // beyond the level on that side
 const conf = (c, d, level) => FR.filter(f => past(c[f], d, level)).length;
+// dip in uptrend: 4H EMA50 > EMA200 with price above EMA200, daily RSI 40–65, 15m RSI at or below the level
+const isDip = (c, level) => c.tr === 1 && c["1D"] != null && c["1D"] >= 40 && c["1D"] <= 65 && past(c["15m"], "os", level);
+const match = (c, d, level, f) => d === "dip" ? isDip(c, level) : past(c[f], d, level);
 const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.floor(m / 60) + " h " + (m % 60) + " min ago"; };
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[ch]));
 
 function render() {
   if (!data) return;
-  const level = LV[dir][lv], word = dir === "ob" ? "or more" : "or less";
-  document.querySelectorAll("[data-tf]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tf === tf)));
+  const dip = dir === "dip", level = LV[dir][lv], word = dir === "ob" ? "or more" : "or less";
+  const vt = dip ? "15m" : tf;                                   // the timeframe the list is filtered and sorted on
+  document.querySelectorAll("[data-tf]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tf === vt)));
   document.querySelectorAll("[data-dir]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.dir === dir)));
   document.querySelectorAll("[data-lv]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.lv === lv)));
-  $("lv-label").textContent = dir === "ob" ? "RSI at least" : "RSI at most";
-  LV[dir].forEach((l, i) => { $("lv" + i).textContent = l; $("c" + i).textContent = data.coins.filter(c => past(c[tf], dir, l)).length; });
-  for (const d of ["ob", "os"]) $("n-" + d).textContent = data.coins.filter(c => past(c[tf], d, LV[d][lv])).length;
+  $("tf-group").hidden = dip;
+  $("lv-label").textContent = dip ? "15m RSI at most" : dir === "ob" ? "RSI at least" : "RSI at most";
+  LV[dir].forEach((l, i) => { $("lv" + i).textContent = l; $("c" + i).textContent = data.coins.filter(c => match(c, dir, l, vt)).length; });
+  for (const d of ["ob", "os", "dip"]) $("n-" + d).textContent = data.coins.filter(c => match(c, d, LV[d][lv], tf)).length;
   document.querySelectorAll("#head th.tf").forEach(th => {
-    const on = th.querySelector("button").dataset.tf === tf;
-    th.classList.toggle("sel", on); th.classList.toggle("asc", dir === "os");
+    const on = th.querySelector("button").dataset.tf === vt;
+    th.classList.toggle("sel", on); th.classList.toggle("asc", dir !== "ob");
   });
-  const list = data.coins.filter(c => past(c[tf], dir, level) && (!q || c.coin.includes(q)))
-    .sort((a, b) => dir === "ob" ? b[tf] - a[tf] : a[tf] - b[tf]);
-  const multi = data.coins.filter(c => conf(c, dir, level) >= 3).length;
-  $("summary").innerHTML = `<b>${list.length}</b> of ${data.coins.length} coins have RSI ${level} ${word} on ${tf}` +
-    (multi ? ` · <b>${multi}</b> on 3 or more timeframes` : "");
+  const list = data.coins.filter(c => match(c, dir, level, vt) && (!q || c.coin.includes(q)))
+    .sort((a, b) => dir === "ob" ? b[vt] - a[vt] : a[vt] - b[vt]);
+  if (dip) {
+    $("summary").innerHTML = `<b>${list.length}</b> of ${data.coins.length} coins are in a 4H uptrend with daily RSI 40–65 and 15m RSI ${level} or less`;
+  } else {
+    const multi = data.coins.filter(c => conf(c, dir, level) >= 3).length;
+    $("summary").innerHTML = `<b>${list.length}</b> of ${data.coins.length} coins have RSI ${level} ${word} on ${tf}` +
+      (multi ? ` · <b>${multi}</b> on 3 or more timeframes` : "");
+  }
   $("rows").innerHTML = list.length ? list.map(c => {
-    const n = conf(c, dir, level);
-    const badge = n >= 3 ? `<span class="conf ${dir}" title="RSI ${level} ${word} on ${n} of 5 timeframes">${n}/5</span>` : "";
-    const cells = FR.map((f, i) => `<td class="tf${i ? "" : " first"}${f === tf ? " sel" : ""}"><span class="rsi ${band(c[f])}">${c[f] ?? "–"}</span></td>`).join("");
+    const n = dip ? 0 : conf(c, dir, level);
+    const badge = (n >= 3 ? `<span class="conf ${dir}" title="RSI ${level} ${word} on ${n} of 5 timeframes">${n}/5</span>` : "") +
+      (!dip && isDip(c, LV.dip[0]) ? `<span class="conf dip" title="Dip in uptrend: 4H uptrend, daily RSI 40–65, 15m RSI 30 or less">Dip ↑</span>` : "");
+    const cells = FR.map((f, i) => `<td class="tf${i ? "" : " first"}${f === vt ? " sel" : ""}"><span class="rsi ${band(c[f])}">${c[f] ?? "–"}</span></td>`).join("");
+    const trend = c.d200 == null ? `<td class="trend first off">–</td>` :
+      `<td class="trend first ${c.tr === 1 ? "on" : "off"}" title="${c.tr === 1 ? "Uptrend: " : ""}price ${c.d200 >= 0 ? "above" : "below"} the 4H EMA200 by ${Math.abs(c.d200)}%">${c.tr === 1 ? "↑ " : ""}${c.d200 > 0 ? "+" : ""}${c.d200}%</td>`;
     const chg = c.chg24 > 0 ? "up" : c.chg24 < 0 ? "down" : "";
     const coin = esc(c.coin);
-    return `<tr><td class="coin"><a href="https://futures.mexc.com/exchange/${coin}_USDT" target="_blank" rel="noopener">${coin}</a>${badge}</td>${cells}` +
-      `<td class="first">${fmtP(c.price)}</td><td class="${chg}">${c.chg24 > 0 ? "+" : ""}${c.chg24}%</td>` +
+    return `<tr><td class="coin"><a href="https://futures.mexc.com/exchange/${coin}_USDT" target="_blank" rel="noopener">${coin}</a>${badge}</td>${cells}${trend}` +
+      `<td>${fmtP(c.price)}</td><td class="${chg}">${c.chg24 > 0 ? "+" : ""}${c.chg24}%</td>` +
       `<td>${fmtV(c.vol24)}</td><td>${c.funding == null ? "–" : (c.funding * 100).toFixed(3) + "%"}</td></tr>`;
-  }).join("") : `<tr><td colspan="10" class="empty">No coin has RSI ${level} ${word} on ${tf} right now${q ? ` matching “${esc(q)}”` : ""}.</td></tr>`;
+  }).join("") : `<tr><td colspan="11" class="empty">${dip ? `No coin is dipping inside an uptrend right now (15m RSI ${level} or less)` : `No coin has RSI ${level} ${word} on ${tf} right now`}${q ? ` matching “${esc(q)}”` : ""}.</td></tr>`;
   status();
 }
 function status() {
@@ -215,7 +237,7 @@ async function load() {
     if (!r.ok) throw new Error(r.status);
     data = await r.json(); render();
   } catch (e) {
-    if (!data) $("rows").innerHTML = `<tr><td colspan="10" class="empty">Could not load the data (${esc(e.message)}). The page retries every 5 minutes.</td></tr>`;
+    if (!data) $("rows").innerHTML = `<tr><td colspan="11" class="empty">Could not load the data (${esc(e.message)}). The page retries every 5 minutes.</td></tr>`;
   }
 }
 document.querySelectorAll("[data-tf]").forEach(b => b.addEventListener("click", () => { tf = b.dataset.tf; store.set("rsi-tf", tf); render(); }));

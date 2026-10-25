@@ -1,6 +1,7 @@
 """
 Live RSI(14) for every MEXC crypto USDT perpetual on 15m, 1H, 4H, 1D and 1W candles - the candle still forming included, so the
-value moves with the live price. Writes site/data.json for the page in site/index.html.
+value moves with the live price. Also the 4H trend (EMA50 / EMA200 on 4H candles) for the "dip in uptrend" tag.
+Writes site/data.json for the page in site/index.html.
 Run every 30 minutes by GitHub Actions (.github/workflows/rsi.yml), which also publishes the site to GitHub Pages.
 """
 import json
@@ -16,6 +17,7 @@ BASE = "https://contract.mexc.com/api/v1/contract"
 TRADFI_TAG = "mc-trade-zone-tradfi"
 FRAMES = {"15m": ("Min15", 900), "1H": ("Min60", 3600), "4H": ("Hour4", 4 * 3600), "1D": ("Day1", 86400),
           "1W": ("Week1", 7 * 86400)}
+TREND_TF, TREND_BARS = "4H", 1000             # ~167 days of 4H candles, so the 4H EMA200 matches the exchange chart
 BARS, PERIOD = 120, 14                        # 120 candles is enough for Wilder's smoothing to settle
 MIN_BARS = 20                                 # fewer candles (a new listing): no RSI yet
 RATE = 9.0                                    # requests per second (public limit: 20 per 2 s)
@@ -54,12 +56,26 @@ def rsi(closes, n=PERIOD):
     return round(100 - 100 / (1 + g / l), 1)
 
 
+def ema(xs, n):
+    if len(xs) < n:
+        return None
+    e = sum(xs[:n]) / n
+    for x in xs[n:]:
+        e += (x - e) * 2 / (n + 1)
+    return e
+
+
 def coin(sym, now):
-    out = {"coin": sym.replace("_USDT", "")}
+    out = {"coin": sym.replace("_USDT", ""), "tr": None, "d200": None}
     for tf, (interval, sec) in FRAMES.items():
-        d = get(f"{BASE}/kline/{sym}", {"interval": interval, "start": now - sec * BARS})
+        bars = TREND_BARS if tf == TREND_TF else BARS
+        d = get(f"{BASE}/kline/{sym}", {"interval": interval, "start": now - sec * bars})
         closes = [float(c) for c in (d or {}).get("close", [])]
         out[tf] = rsi(closes)
+        if tf == TREND_TF and len(closes) >= 200:
+            e50, e200, px = ema(closes, 50), ema(closes, 200), closes[-1]
+            out["tr"] = int(e50 > e200 and px > e200)                # 1 = uptrend on 4H
+            out["d200"] = round((px / e200 - 1) * 100, 1)            # % above (+) / below (-) the 4H EMA200
     return out
 
 
@@ -85,7 +101,9 @@ def main():
                                "period": PERIOD, "coins": rows}, separators=(",", ":")))
     hot = {tf: sum(1 for r in rows if r[tf] is not None and r[tf] >= 75) for tf in FRAMES}
     cold = {tf: sum(1 for r in rows if r[tf] is not None and r[tf] <= 25) for tf in FRAMES}
-    print(f"{len(rows)} coins in {time.time() - t0:.0f}s; RSI >= 75: {hot}; RSI <= 25: {cold}")
+    dips = [r["coin"] for r in rows if r["tr"] == 1 and r["1D"] is not None and 40 <= r["1D"] <= 65
+            and r["15m"] is not None and r["15m"] <= 30]
+    print(f"{len(rows)} coins in {time.time() - t0:.0f}s; RSI >= 75: {hot}; RSI <= 25: {cold}; dip in uptrend: {dips}")
 
 
 if __name__ == "__main__":
