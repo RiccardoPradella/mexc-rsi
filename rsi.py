@@ -2,7 +2,7 @@
 Live RSI(14) for every MEXC crypto USDT perpetual on 15m, 1H, 4H, 1D and 1W candles - the candle still forming included, so the
 value moves with the live price. Also the 4H trend (EMA50 / EMA200 on 4H candles) for the "dip in uptrend" tag.
 Writes site/data.json for the page in site/index.html.
-Run every 30 minutes by GitHub Actions (.github/workflows/rsi.yml), which also publishes the site to GitHub Pages.
+Run every 10 minutes by GitHub Actions (.github/workflows/rsi.yml), which also publishes the site to GitHub Pages.
 """
 import json
 import threading

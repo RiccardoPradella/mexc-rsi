@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>MEXC RSI Heat</title>
-<meta name="description" content="Live RSI(14) of every MEXC USDT perpetual on 15m, 1H, 4H, 1D and 1W — overbought, oversold and dips in an uptrend — refreshed every 30 minutes.">
+<meta name="description" content="Live RSI(14) of every MEXC USDT perpetual on 15m, 1H, 4H, 1D and 1W — overbought, oversold and dips in an uptrend — refreshed every 10 minutes.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
@@ -159,7 +159,7 @@ footer p { margin: 0; }
     to get a value there, so recent listings show "–" on 1W.</p>
     <p>Rows are coins past the chosen level on the chosen timeframe; every RSI cell is coloured, so you can see at a glance where
     the other timeframes agree. "3/5" means past the level on 3 of the 5 timeframes. Data from MEXC's public API, refreshed about
-    every 30 minutes; this page reloads it every 5 minutes. An extreme RSI means a strong recent run or slide, not a signal on its own.</p>
+    every 10 minutes; this page checks for new data every minute. An extreme RSI means a strong recent run or slide, not a signal on its own.</p>
     <p><b>Dip in uptrend</b> = a short, sharp drop inside a rising coin: on 4H candles EMA50 is above EMA200 and the price is
     still above EMA200 (shown as ↑ and the % above EMA200 in "4H trend"), daily RSI is between 40 and 65 (trend healthy, not
     overheated), and 15m RSI is at or below the chosen level (30 / 25 / 20). Rows tagged "Dip ↑" in the other views meet it at 30.
@@ -227,7 +227,7 @@ function render() {
 }
 function status() {
   if (!data) return;
-  const stale = Date.now() - Date.parse(data.updated) > 90 * 60000;
+  const stale = Date.now() - Date.parse(data.updated) > 30 * 60000;
   $("status").className = "status" + (stale ? " stale" : "");
   $("status").innerHTML = `Updated <b>${ago(data.updated)}</b> · ${new Date(data.updated).toLocaleString([], {dateStyle: "medium", timeStyle: "short"})}` + (stale ? " · late, next refresh pending" : "");
 }
@@ -237,14 +237,14 @@ async function load() {
     if (!r.ok) throw new Error(r.status);
     data = await r.json(); render();
   } catch (e) {
-    if (!data) $("rows").innerHTML = `<tr><td colspan="11" class="empty">Could not load the data (${esc(e.message)}). The page retries every 5 minutes.</td></tr>`;
+    if (!data) $("rows").innerHTML = `<tr><td colspan="11" class="empty">Could not load the data (${esc(e.message)}). The page retries every minute.</td></tr>`;
   }
 }
 document.querySelectorAll("[data-tf]").forEach(b => b.addEventListener("click", () => { tf = b.dataset.tf; store.set("rsi-tf", tf); render(); }));
 document.querySelectorAll("[data-dir]").forEach(b => b.addEventListener("click", () => { dir = b.dataset.dir; store.set("rsi-dir", dir); render(); }));
 document.querySelectorAll("[data-lv]").forEach(b => b.addEventListener("click", () => { lv = +b.dataset.lv; store.set("rsi-lv", String(lv)); render(); }));
 $("q").addEventListener("input", e => { q = e.target.value.trim().toUpperCase(); render(); });
-load(); setInterval(load, 5 * 60000); setInterval(status, 60000);
+load(); setInterval(load, 60000); setInterval(status, 60000);
 </script>
 </body>
 </html>

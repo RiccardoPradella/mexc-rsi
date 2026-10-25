@@ -1,6 +1,7 @@
 name: RSI page
 # GitHub starts scheduled jobs late (observed: every 2.5–5 h instead of 30 min). So each run keeps the page fresh by
-# itself: it recalculates and republishes every 30 minutes (at :07 and :37) for up to 5.5 hours. The hourly schedule
+# itself: it recalculates and republishes every 10 minutes (at :07, :17, :27, …) for up to 5.5 hours. One pass takes
+# ~5.5 min (MEXC rate limit), and 6 publishes an hour stay under GitHub Pages' 10-builds-an-hour soft limit. The hourly schedule
 # only (re)starts that loop; a newer run replaces the running one, so there is never more than one.
 on:
   workflow_dispatch:
@@ -21,7 +22,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests
-      - name: recalculate and republish every 30 minutes
+      - name: recalculate and republish every 10 minutes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -36,8 +37,7 @@ jobs:
                 && git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages) \
                 || echo "publish failed, retrying next round"
             fi
-            now=$(date +%s); m=$(( now % 3600 / 60 ))
-            if [ $m -lt 7 ]; then next=$(( now - now % 3600 + 420 )); elif [ $m -lt 37 ]; then next=$(( now - now % 3600 + 2220 )); else next=$(( now - now % 3600 + 4020 )); fi
+            now=$(date +%s); next=$(( ((now - 420) / 600 + 1) * 600 + 420 ))     # next :x7 minute
             [ $next -ge $end ] && break
             sleep $(( next - now ))
           done
