@@ -1,5 +1,5 @@
 """
-Live RSI(14) for every MEXC crypto USDT perpetual on 1H, 4H and 1D candles - the candle still forming included, so the
+Live RSI(14) for every MEXC crypto USDT perpetual on 15m, 1H, 4H, 1D and 1W candles - the candle still forming included, so the
 value moves with the live price. Writes site/data.json for the page in site/index.html.
 Run every 30 minutes by GitHub Actions (.github/workflows/rsi.yml), which also publishes the site to GitHub Pages.
 """
@@ -14,8 +14,10 @@ import requests
 
 BASE = "https://contract.mexc.com/api/v1/contract"
 TRADFI_TAG = "mc-trade-zone-tradfi"
-FRAMES = {"1H": ("Min60", 3600), "4H": ("Hour4", 4 * 3600), "1D": ("Day1", 86400)}
+FRAMES = {"15m": ("Min15", 900), "1H": ("Min60", 3600), "4H": ("Hour4", 4 * 3600), "1D": ("Day1", 86400),
+          "1W": ("Week1", 7 * 86400)}
 BARS, PERIOD = 120, 14                        # 120 candles is enough for Wilder's smoothing to settle
+MIN_BARS = 20                                 # fewer candles (a new listing): no RSI yet
 RATE = 9.0                                    # requests per second (public limit: 20 per 2 s)
 OUT = Path(__file__).parent / "site" / "data.json"
 _lock, _next = threading.Lock(), [0.0]
@@ -40,7 +42,7 @@ def get(url, params=None):
 
 def rsi(closes, n=PERIOD):
     """Wilder's RSI of the last value (the forming candle's close = current price)."""
-    if len(closes) < 3 * n:                   # too few candles (new listing): no reliable RSI
+    if len(closes) < MIN_BARS:
         return None
     gains = [max(b - a, 0.0) for a, b in zip(closes, closes[1:])]
     losses = [max(a - b, 0.0) for a, b in zip(closes, closes[1:])]
@@ -81,8 +83,9 @@ def main():
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(json.dumps({"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                                "period": PERIOD, "coins": rows}, separators=(",", ":")))
-    hot = {tf: sum(1 for r in rows if (r[tf] or 0) >= 75) for tf in FRAMES}
-    print(f"{len(rows)} coins in {time.time() - t0:.0f}s; RSI >= 75: {hot}")
+    hot = {tf: sum(1 for r in rows if r[tf] is not None and r[tf] >= 75) for tf in FRAMES}
+    cold = {tf: sum(1 for r in rows if r[tf] is not None and r[tf] <= 25) for tf in FRAMES}
+    print(f"{len(rows)} coins in {time.time() - t0:.0f}s; RSI >= 75: {hot}; RSI <= 25: {cold}")
 
 
 if __name__ == "__main__":
