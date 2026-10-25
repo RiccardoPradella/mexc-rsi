@@ -1,32 +1,43 @@
 name: RSI page
+# GitHub starts scheduled jobs late (observed: every 2.5–5 h instead of 30 min). So each run keeps the page fresh by
+# itself: it recalculates and republishes every 30 minutes (at :07 and :37) for up to 5.5 hours. The hourly schedule
+# only (re)starts that loop; a newer run replaces the running one, so there is never more than one.
 on:
-  workflow_dispatch:          # manual runs
+  workflow_dispatch:
   schedule:
-    - cron: "7,37 * * * *"    # every 30 minutes (GitHub may start it a few minutes late)
+    - cron: "7 * * * *"
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: rsi-loop
+  cancel-in-progress: true
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 jobs:
-  build-and-publish:
+  refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    timeout-minutes: 345
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install requests
-      - run: python rsi.py                     # writes site/data.json
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v4
+      - name: recalculate and republish every 30 minutes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "rsi-bot"
+          git config --global user.email "actions@users.noreply.github.com"
+          end=$(( $(date +%s) + 330 * 60 ))
+          while :; do
+            if python rsi.py; then
+              rm -rf /tmp/pub && mkdir /tmp/pub && cp site/index.html site/data.json /tmp/pub/ && touch /tmp/pub/.nojekyll
+              # gh-pages holds only the latest page (one commit, force-pushed), so the repository never grows
+              (cd /tmp/pub && git init -q -b gh-pages && git add -A && git commit -q -m "RSI $(date -u +%FT%H:%MZ)" \
+                && git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages) \
+                || echo "publish failed, retrying next round"
+            fi
+            now=$(date +%s); m=$(( now % 3600 / 60 ))
+            if [ $m -lt 7 ]; then next=$(( now - now % 3600 + 420 )); elif [ $m -lt 37 ]; then next=$(( now - now % 3600 + 2220 )); else next=$(( now - now % 3600 + 4020 )); fi
+            [ $next -ge $end ] && break
+            sleep $(( next - now ))
+          done
