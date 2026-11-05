@@ -1,22 +1,30 @@
 name: RSI page
 # GitHub starts scheduled jobs late (observed: every 2.5–5 h instead of 30 min). So each run keeps the page fresh by
 # itself: it recalculates and republishes every 10 minutes (at :07, :17, :27, …) for up to 5.5 hours. One pass takes
-# ~5.5 min (MEXC rate limit), and 6 publishes an hour stay under GitHub Pages' 10-builds-an-hour soft limit. The hourly schedule
-# only (re)starts that loop; a newer run replaces the running one, so there is never more than one.
+# ~5.5 min (MEXC rate limit), and 6 publishes an hour stay under GitHub Pages' 10-builds-an-hour soft limit.
+# Chaining: each run first queues its successor, which waits (concurrency, no cancelling) and starts the moment this
+# run ends, so the page never goes stale between runs (before: gaps of 1–2 h whenever the schedule fired late).
+# The hourly schedule is only a backup that restarts the chain; a newer queued run replaces an older queued one,
+# so there is at most one running and one waiting.
 on:
   workflow_dispatch:
   schedule:
     - cron: "7 * * * *"
 concurrency:
   group: rsi-loop
-  cancel-in-progress: true
+  cancel-in-progress: false
 permissions:
   contents: write
+  actions: write
 jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 345
     steps:
+      - name: queue the next run (starts when this one ends)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run rsi.yml --repo "$GITHUB_REPOSITORY" --ref main
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
