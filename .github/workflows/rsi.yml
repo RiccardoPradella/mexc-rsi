@@ -1,42 +1,54 @@
 name: RSI page
-# GitHub starts scheduled jobs late (observed: every 2.5–5 h instead of 30 min). So each run keeps the page fresh by
-# itself: it recalculates and republishes every 10 minutes (at :07, :17, :27, …) for up to 5.5 hours. One pass takes
-# ~5.5 min (MEXC rate limit), and 6 publishes an hour stay under GitHub Pages' 10-builds-an-hour soft limit.
-# Chaining: each run first queues its successor, which waits (concurrency, no cancelling) and starts the moment this
-# run ends, so the page never goes stale between runs (before: gaps of 1–2 h whenever the schedule fired late).
-# The hourly schedule is only a backup that restarts the chain; a newer queued run replaces an older queued one,
-# so there is at most one running and one waiting.
+# GitHub starts scheduled jobs late (observed: every 2.5–5 h instead of hourly), so each run keeps the page fresh by
+# itself: it recalculates and republishes every 10 minutes (at :07, :17, :27, …) for 5 hours. One pass takes ~5.5 min
+# (MEXC rate limit), and 6 publishes an hour stay under GitHub Pages' 10-builds-an-hour soft limit.
+# Hand-over: 15 min before its end a run starts its successor, which waits and takes over at the exact slot where this
+# run stops. Before ending, the run checks the successor is alive and starts a new one if not (a queued successor once
+# failed to start and the page went stale for hours). The hourly schedule is only a backup: it exits at once when a
+# loop is already running, so there is never more than one loop publishing.
 on:
   workflow_dispatch:
+    inputs:
+      start_after:
+        description: "Unix time to wait for before the first pass (set by the previous run; 0 = start now)"
+        required: false
+        default: "0"
   schedule:
     - cron: "7 * * * *"
-concurrency:
-  group: rsi-loop
-  cancel-in-progress: false
 permissions:
   contents: write
   actions: write
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 345
+    timeout-minutes: 355
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      START_AFTER: ${{ inputs.start_after || '0' }}
     steps:
-      - name: queue the next run (starts when this one ends)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run rsi.yml --repo "$GITHUB_REPOSITORY" --ref main
+      - name: skip if a loop is already running (unless this run is a hand-over)
+        id: gate
+        run: |
+          n=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow rsi.yml --limit 20 --json databaseId,status \
+                --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID and .status != \"completed\")] | length" || echo 0)
+          if [ "$START_AFTER" = 0 ] && [ "${n:-0}" -gt 0 ]; then echo "a loop is already running"; echo "skip=1" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != '1'
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != '1'
         with:
           python-version: "3.12"
       - run: pip install requests
+        if: steps.gate.outputs.skip != '1'
       - name: recalculate and republish every 10 minutes
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.gate.outputs.skip != '1'
         run: |
           git config --global user.name "rsi-bot"
           git config --global user.email "actions@users.noreply.github.com"
-          end=$(( $(date +%s) + 330 * 60 ))
+          now=$(date +%s); [ "$START_AFTER" -gt "$now" ] && sleep $(( START_AFTER - now ))
+          t=$(( $(date +%s) + 300 * 60 )); end=$(( (t - 420 + 599) / 600 * 600 + 420 ))   # first :x7 slot after 5 h
+          handed=0
           while :; do
             if python rsi.py; then
               rm -rf /tmp/pub && mkdir /tmp/pub && cp site/index.html site/data.json /tmp/pub/ && touch /tmp/pub/.nojekyll
@@ -46,6 +58,23 @@ jobs:
                 || echo "publish failed, retrying next round"
             fi
             now=$(date +%s); next=$(( ((now - 420) / 600 + 1) * 600 + 420 ))     # next :x7 minute
+            if [ $handed = 0 ] && [ $now -ge $(( end - 15 * 60 )) ]; then
+              gh workflow run rsi.yml --repo "$GITHUB_REPOSITORY" --ref main -f start_after=$end && handed=1
+            fi
             [ $next -ge $end ] && break
             sleep $(( next - now ))
+          done
+      - name: make sure the next loop is running
+        if: ${{ !cancelled() && steps.gate.outputs.skip != '1' }}
+        run: |
+          for try in 1 2 3; do
+            for i in 1 2 3 4 5 6; do
+              n=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow rsi.yml --limit 20 --json databaseId,status \
+                    --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID and .status != \"completed\")] | length" || echo 1)   # API error: assume running
+              [ "${n:-0}" -gt 0 ] && { echo "next loop is running"; exit 0; }
+              sleep 20
+            done
+            echo "no next loop running; starting one (try $try)"
+            gh workflow run rsi.yml --repo "$GITHUB_REPOSITORY" --ref main -f start_after=$(date +%s) || true
+            sleep 60
           done
