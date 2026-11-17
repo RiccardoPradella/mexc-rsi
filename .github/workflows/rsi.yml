@@ -5,7 +5,8 @@ name: RSI page
 # Hand-over: 15 min before its end a run starts its successor, which waits and takes over at the exact slot where this
 # run stops. Before ending, the run checks the successor is alive and starts a new one if not (a queued successor once
 # failed to start and the page went stale for hours). The hourly schedule is only a backup: it exits at once when a
-# loop is already running, so there is never more than one loop publishing.
+# loop is already running, so there is never more than one loop publishing. If MEXC returns nothing 3 passes in a row
+# (it sometimes blocks a runner's IP), the run hands over to a fresh machine at once instead of waiting out its 5 hours.
 on:
   workflow_dispatch:
     inputs:
@@ -48,16 +49,25 @@ jobs:
           git config --global user.email "actions@users.noreply.github.com"
           now=$(date +%s); [ "$START_AFTER" -gt "$now" ] && sleep $(( START_AFTER - now ))
           t=$(( $(date +%s) + 300 * 60 )); end=$(( (t - 420 + 599) / 600 * 600 + 420 ))   # first :x7 slot after 5 h
-          handed=0
+          handed=0; fails=0
           while :; do
             if python rsi.py; then
+              fails=0
               rm -rf /tmp/pub && mkdir /tmp/pub && cp site/index.html site/data.json /tmp/pub/ && touch /tmp/pub/.nojekyll
               # gh-pages holds only the latest page (one commit, force-pushed), so the repository never grows
               (cd /tmp/pub && git init -q -b gh-pages && git add -A && git commit -q -m "RSI $(date -u +%FT%H:%MZ)" \
                 && git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages) \
                 || echo "publish failed, retrying next round"
+            else
+              fails=$(( fails + 1 ))
             fi
             now=$(date +%s); next=$(( ((now - 420) / 600 + 1) * 600 + 420 ))     # next :x7 minute
+            # MEXC answering nothing 3 times in a row usually means it blocks this machine's IP (seen: a whole 5-hour run
+            # with 0 coins): hand over to a fresh machine from the next slot and stop
+            if [ $fails -ge 3 ] && [ $handed = 0 ]; then
+              echo "3 failed passes in a row - handing over to a fresh machine"
+              gh workflow run rsi.yml --repo "$GITHUB_REPOSITORY" --ref main -f start_after=$next && break
+            fi
             if [ $handed = 0 ] && [ $now -ge $(( end - 15 * 60 )) ]; then
               gh workflow run rsi.yml --repo "$GITHUB_REPOSITORY" --ref main -f start_after=$end && handed=1
             fi
